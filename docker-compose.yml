@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-orchestra}
+      POSTGRES_USER: ${POSTGRES_USER:-orchestra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orchestra}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-orchestra}
+      DB_USER: ${POSTGRES_USER:-orchestra}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-orchestra}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # No published port: only the backend may call the AI service.
+  ai-service:
+    build: ./ai-service
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
