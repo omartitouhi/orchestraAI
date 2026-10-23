@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "1",
+  "name": "Text analysis and summary",
+  "description": "Phase 1 target: two models chained by hand, no tools.",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "trigger",
+      "position": { "x": 0, "y": 0 },
+      "params": {
+        "kind": "manual",
+        "inputSchema": {
+          "type": "object",
+          "required": ["text"],
+          "properties": { "text": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "id": "analyse",
+      "type": "llm",
+      "label": "Analyse with Claude",
+      "position": { "x": 250, "y": 0 },
+      "params": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-5-5",
+        "prompt": "List the key points, the tone and any open questions in this text:\n{{nodes.start.output.text}}",
+        "temperature": 0.2
+      }
+    },
+    {
+      "id": "summarise",
+      "type": "llm",
+      "label": "Summarise with GPT",
+      "position": { "x": 500, "y": 0 },
+      "params": {
+        "provider": "openai",
+        "model": "gpt-5-mini",
+        "prompt": "Write a 5-line summary from this analysis:\n{{nodes.analyse.output}}"
+      }
+    },
+    {
+      "id": "result",
+      "type": "output",
+      "position": { "x": 750, "y": 0 },
+      "params": { "value": "{{nodes.summarise.output}}" }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "analyse" },
+    { "from": "analyse", "to": "summarise" },
+    { "from": "summarise", "to": "result" }
+  ]
+}
