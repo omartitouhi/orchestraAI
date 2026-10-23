@@ -32,3 +32,7 @@ cd backend && ./mvnw spring-boot:run          # needs PostgreSQL on localhost:54
 cd ai-service && uvicorn app.main:app --reload
 cd frontend && npm install && npm run dev
 ```
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
