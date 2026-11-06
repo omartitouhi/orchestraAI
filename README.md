@@ -24,6 +24,7 @@ docker compose up --build
 - Frontend: http://localhost:5173
 - Backend health: http://localhost:8080/health (or the `BACKEND_PORT` set in `.env`)
 - The AI service is only reachable from the backend, on the internal Docker network.
+- The "Ask the model to say hello" button needs an [OpenRouter](https://openrouter.ai/keys) key in `OPENROUTER_API_KEY` (`.env`). For a local model instead, run [Ollama](https://ollama.com) on the host and set `LLM_MODEL=ollama/llama3.2`.
 
 ## Run a service on its own
 

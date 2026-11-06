@@ -20,15 +20,24 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-orchestra}
       DB_USER: ${POSTGRES_USER:-orchestra}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-orchestra}
+      AI_SERVICE_URL: http://ai-service:8000
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      ai-service:
+        condition: service_started
 
   # No published port: only the backend may call the AI service.
   ai-service:
     build: ./ai-service
+    environment:
+      LLM_MODEL: ${LLM_MODEL:-openrouter/anthropic/claude-haiku-5.5}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OLLAMA_API_BASE: ${OLLAMA_API_BASE:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "8000"
 
