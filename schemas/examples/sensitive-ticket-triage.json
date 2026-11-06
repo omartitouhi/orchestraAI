@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "1",
+  "name": "Sensitive ticket triage",
+  "description": "Customer message marked sensitive, so it stays on a local model. A condition opens a ticket only when the message is urgent.",
+  "nodes": [
+    {
+      "id": "start",
+      "type": "trigger",
+      "sensitive": true,
+      "params": {
+        "kind": "webhook",
+        "inputSchema": {
+          "type": "object",
+          "required": ["customer", "message"],
+          "properties": {
+            "customer": { "type": "string" },
+            "message": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "id": "classify",
+      "type": "llm",
+      "label": "Classify locally",
+      "params": {
+        "provider": "ollama",
+        "model": "llama3.2",
+        "prompt": "Is this customer message urgent? Give a one-line reason.\n{{nodes.start.output.message}}",
+        "outputSchema": {
+          "type": "object",
+          "required": ["urgent", "reason"],
+          "properties": {
+            "urgent": { "type": "boolean" },
+            "reason": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "id": "is_urgent",
+      "type": "condition",
+      "params": {
+        "left": "{{nodes.classify.output.urgent}}",
+        "operator": "eq",
+        "right": true
+      }
+    },
+    {
+      "id": "open_ticket",
+      "type": "mcp_tool",
+      "params": {
+        "server": "incidents-mock",
+        "tool": "create_ticket",
+        "arguments": {
+          "title": "Urgent request from {{nodes.start.output.customer}}",
+          "priority": "high",
+          "description": "{{nodes.classify.output.reason}}"
+        }
+      }
+    },
+    {
+      "id": "ticket_opened",
+      "type": "output",
+      "params": { "value": "Ticket opened: {{nodes.open_ticket.output}}" }
+    },
+    {
+      "id": "no_action",
+      "type": "transform",
+      "params": { "template": "Not urgent: {{nodes.classify.output.reason}}" }
+    },
+    {
+      "id": "logged",
+      "type": "output",
+      "params": { "value": "{{nodes.no_action.output}}" }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "classify" },
+    { "from": "classify", "to": "is_urgent" },
+    { "from": "is_urgent", "to": "open_ticket", "port": "true" },
+    { "from": "open_ticket", "to": "ticket_opened" },
+    { "from": "is_urgent", "to": "no_action", "port": "false" },
+    { "from": "no_action", "to": "logged" }
+  ]
+}

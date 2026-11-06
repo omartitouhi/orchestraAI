@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/omartitouhi/orchestraAI/schemas/workflow.schema.json",
+  "title": "ORCHESTRA AI workflow",
+  "description": "A directed graph of nodes. Shared contract between the frontend, the backend and the AI service. Graph rules that JSON Schema cannot express (unique node ids, edges pointing to existing nodes, no cycles, condition edges carrying a port) are checked by the backend.",
+  "type": "object",
+  "required": ["schemaVersion", "name", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "description": { "type": "string" },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxCostUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Execution is refused if the estimated cost exceeds this cap."
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/node" },
+      "contains": { "properties": { "type": { "const": "trigger" } } },
+      "minContains": 1,
+      "maxContains": 1
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/edge" }
+    }
+  },
+  "$defs": {
+    "nodeId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+    },
+    "template": {
+      "type": "string",
+      "description": "Text where {{nodes.<id>.output}} (or a path below it, e.g. {{nodes.<id>.output.items}}) is replaced by an upstream node's output at run time."
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "type", "params"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/nodeId" },
+        "type": {
+          "enum": ["trigger", "llm", "mcp_tool", "skill", "condition", "transform", "approval", "output"]
+        },
+        "label": { "type": "string" },
+        "sensitive": {
+          "type": "boolean",
+          "default": false,
+          "description": "Marks this node's output as sensitive. The mark follows the edges: any downstream LLM node is forced onto a local model."
+        },
+        "position": {
+          "type": "object",
+          "required": ["x", "y"],
+          "additionalProperties": false,
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" }
+          },
+          "description": "Editor layout only. Absent on generated workflows."
+        },
+        "params": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "trigger" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/triggerParams" } } } },
+        { "if": { "properties": { "type": { "const": "llm" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/llmParams" } } } },
+        { "if": { "properties": { "type": { "const": "mcp_tool" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/mcpToolParams" } } } },
+        { "if": { "properties": { "type": { "const": "skill" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/skillParams" } } } },
+        { "if": { "properties": { "type": { "const": "condition" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/conditionParams" } } } },
+        { "if": { "properties": { "type": { "const": "transform" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/transformParams" } } } },
+        { "if": { "properties": { "type": { "const": "approval" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/approvalParams" } } } },
+        { "if": { "properties": { "type": { "const": "output" } } }, "then": { "properties": { "params": { "$ref": "#/$defs/outputParams" } } } }
+      ]
+    },
+    "triggerParams": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["manual", "cron", "webhook"] },
+        "schedule": { "type": "string", "description": "Cron expression, required when kind is cron." },
+        "inputSchema": {
+          "type": "object",
+          "description": "JSON Schema of the input given when the workflow is started. Becomes the trigger node's output."
+        }
+      },
+      "if": { "properties": { "kind": { "const": "cron" } } },
+      "then": { "required": ["schedule"] }
+    },
+    "llmParams": {
+      "type": "object",
+      "required": ["provider", "model", "prompt"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "enum": ["openai", "anthropic", "ollama"] },
+        "model": { "type": "string", "minLength": 1 },
+        "system": { "$ref": "#/$defs/template" },
+        "prompt": { "$ref": "#/$defs/template" },
+        "outputSchema": {
+          "type": "object",
+          "description": "JSON Schema the model's answer must match. Without it, the output is plain text."
+        },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "maxTokens": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "mcpToolParams": {
+      "type": "object",
+      "required": ["server", "tool", "arguments"],
+      "additionalProperties": false,
+      "properties": {
+        "server": { "type": "string", "minLength": 1, "description": "Name of a registered MCP server." },
+        "tool": { "type": "string", "minLength": 1 },
+        "arguments": {
+          "type": "object",
+          "description": "Tool arguments. String values may be templates. Checked against the tool's own input schema by the MCP gateway."
+        }
+      }
+    },
+    "skillParams": {
+      "type": "object",
+      "required": ["skill"],
+      "additionalProperties": false,
+      "properties": {
+        "skill": { "type": "string", "minLength": 1 },
+        "input": { "$ref": "#/$defs/template" }
+      }
+    },
+    "conditionParams": {
+      "type": "object",
+      "required": ["left", "operator"],
+      "additionalProperties": false,
+      "description": "Declarative test, no code. Outgoing edges carry port \"true\" or \"false\".",
+      "properties": {
+        "left": { "$ref": "#/$defs/template" },
+        "operator": { "enum": ["eq", "neq", "gt", "gte", "lt", "lte", "contains", "is_empty", "is_not_empty"] },
+        "right": { "type": ["string", "number", "boolean", "null"] }
+      },
+      "if": { "properties": { "operator": { "not": { "enum": ["is_empty", "is_not_empty"] } } } },
+      "then": { "required": ["right"] }
+    },
+    "transformParams": {
+      "type": "object",
+      "required": ["template"],
+      "additionalProperties": false,
+      "properties": {
+        "template": { "$ref": "#/$defs/template" }
+      }
+    },
+    "approvalParams": {
+      "type": "object",
+      "required": ["message"],
+      "additionalProperties": false,
+      "properties": {
+        "message": { "$ref": "#/$defs/template" },
+        "approvers": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "outputParams": {
+      "type": "object",
+      "required": ["value"],
+      "additionalProperties": false,
+      "properties": {
+        "value": { "$ref": "#/$defs/template" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "$ref": "#/$defs/nodeId" },
+        "to": { "$ref": "#/$defs/nodeId" },
+        "port": { "enum": ["true", "false"], "description": "Branch taken, only on edges leaving a condition node." }
+      }
+    }
+  }
+}
